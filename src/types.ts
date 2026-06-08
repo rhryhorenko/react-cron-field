@@ -1,12 +1,17 @@
 import type { ReactNode } from "react";
 
+export type MonthSelection = number[] | null;
+export type WeekdaySelection = number[];
+export type DateSelection = number[];
+export type TimeSelection = number[] | null;
+
 export type ScheduleDraft = {
-  month: number | null;
+  month: MonthSelection;
   dayMode: "every_day" | "weekday" | "date";
-  dayOfWeek: number;
-  dayOfMonth: number;
-  hour: number | null;
-  minute: number | null;
+  dayOfWeek: WeekdaySelection;
+  dayOfMonth: DateSelection;
+  hour: TimeSelection;
+  minute: TimeSelection;
   second: number | null;
 };
 
@@ -38,6 +43,14 @@ export type DropdownAppearance = {
   triggerIcon?: ReactNode;
 };
 
+export type MultiselectConfig = {
+  month?: boolean;
+  weekday?: boolean;
+  date?: boolean;
+  hour?: boolean;
+  minute?: boolean;
+};
+
 export type CronFieldEditorProps = {
   value: string;
   timezone: string;
@@ -48,4 +61,5 @@ export type CronFieldEditorProps = {
   dropdownAppearance?: DropdownAppearance;
   displayFormat?: DisplayFormat;
   errorClassName?: string;
+  multiselect?: MultiselectConfig;
 };

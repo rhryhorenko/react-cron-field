@@ -9,27 +9,32 @@ type DropdownOption = {
 
 type DropdownProps = {
   label: string;
-  value: string;
+  selectedValues: string[];
   options: DropdownOption[];
-  onChange: (nextValue: string) => void;
+  onChange: (nextValues: string[]) => void;
   disabled?: boolean;
   classNames?: DropdownClassNames;
   triggerIcon?: ReactNode;
+  multiple?: boolean;
+  valueLabel?: string;
 };
 
 export function Dropdown({
   label,
-  value,
+  selectedValues = [],
   options,
   onChange,
   disabled = false,
   classNames,
   triggerIcon,
+  multiple = false,
+  valueLabel,
 }: DropdownProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const listboxId = useId();
-  const selectedOption = options.find((option) => option.value === value) ?? options[0];
+  const selectedOptions = options.filter((option) => selectedValues.includes(option.value));
+  const triggerLabel = valueLabel ?? selectedOptions[0]?.label ?? options[0]?.label ?? "";
 
   useEffect(() => {
     if (!open) {
@@ -70,9 +75,10 @@ export function Dropdown({
         aria-controls={listboxId}
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
+        title={triggerLabel}
       >
         <span className={joinClassNames("rcf-dropdown-value", classNames?.value)}>
-          {selectedOption?.label ?? value}
+          {triggerLabel}
         </span>
         <span className={joinClassNames("rcf-dropdown-chevron", classNames?.chevron)} aria-hidden="true">
           {triggerIcon ?? "▾"}
@@ -85,9 +91,10 @@ export function Dropdown({
           role="listbox"
           id={listboxId}
           aria-label={label}
+          aria-multiselectable={multiple || undefined}
         >
           {options.map((option) => {
-            const selected = option.value === value;
+            const selected = selectedValues.includes(option.value);
             return (
               <button
                 key={option.value}
@@ -101,7 +108,23 @@ export function Dropdown({
                   selected ? classNames?.optionSelected : "",
                 )}
                 onClick={() => {
-                  onChange(option.value);
+                  if (multiple) {
+                    if (option.value === "*") {
+                      onChange(selected ? [] : ["*"]);
+                      return;
+                    }
+
+                    const baseValues = selectedValues.includes("*")
+                      ? []
+                      : selectedValues;
+                    const nextValues = selected
+                      ? selectedValues.filter((value) => value !== option.value)
+                      : [...baseValues, option.value];
+                    onChange(nextValues);
+                    return;
+                  }
+
+                  onChange([option.value]);
                   setOpen(false);
                 }}
               >

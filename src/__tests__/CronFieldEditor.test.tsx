@@ -11,7 +11,7 @@ describe("CronFieldEditor", () => {
     render(<CronFieldEditor value="0 0 6 * * *" timezone="UTC" onChange={handleChange} />);
 
     await chooseOption(user, "Day type", "Specific weekday");
-    await chooseOption(user, "Weekday", "Monday");
+    await chooseOption(user, "Weekday", "MON");
     await chooseOption(user, "Hour", "00");
     await chooseOption(user, "Minute", "00");
     await chooseOption(user, "Second", "Every second");
@@ -70,10 +70,10 @@ describe("CronFieldEditor", () => {
       valid: false,
       reason: "unsupported_cron",
       message:
-        "This UTC cron value is not supported by the editor. Use a six-field cron with numeric values or wildcards in the time fields.",
+        "This UTC cron value is not supported by the editor. Use a six-field cron with numeric values, supported comma lists, or wildcards in the supported fields.",
     });
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "This UTC cron value is not supported by the editor. Use a six-field cron with numeric values or wildcards in the time fields.",
+      "This UTC cron value is not supported by the editor. Use a six-field cron with numeric values, supported comma lists, or wildcards in the supported fields.",
     );
   });
 
@@ -127,7 +127,7 @@ describe("CronFieldEditor", () => {
 
     render(<CronFieldEditor value="0 0 9 31 1 *" timezone="UTC" onChange={vi.fn()} />);
 
-    await chooseOption(user, "Month", "February");
+    await chooseOption(user, "Month", "FEB");
     await chooseOption(user, "Day type", "Specific date");
 
     const dateButton = screen.getByRole("button", { name: "Date" });
@@ -207,6 +207,191 @@ describe("CronFieldEditor", () => {
 
     expect(screen.getByRole("button", { name: "Hour" })).toHaveTextContent("3");
     expect(screen.getByText("Runs at 3:0:0 in every month (Europe/Kiev)")).toBeInTheDocument();
+  });
+
+  it("supports opt-in month multiselect while preserving the built-in dropdown behavior", async () => {
+    const user = userEvent.setup();
+    const handleChange = vi.fn();
+
+    render(
+      <CronFieldEditor
+        value="0 0 6 * * *"
+        timezone="UTC"
+        onChange={handleChange}
+        multiselect={{ month: true }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Month" }));
+    await user.click(screen.getByRole("option", { name: "JAN" }));
+    expect(screen.getByRole("listbox", { name: "Month" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("option", { name: "MAR" }));
+
+    expect(handleChange).toHaveBeenLastCalledWith("0 0 6 * 1,3 *");
+    expect(screen.getByRole("button", { name: "Month" })).toHaveTextContent("JAN, MAR");
+  });
+
+  it("keeps the full multiselect month label in the trigger title while the visible text can ellipsize", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <CronFieldEditor
+        value="0 0 6 * * *"
+        timezone="UTC"
+        onChange={vi.fn()}
+        multiselect={{ month: true }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Month" }));
+    await user.click(screen.getByRole("option", { name: "JAN" }));
+    await user.click(screen.getByRole("option", { name: "MAR" }));
+    await user.click(screen.getByRole("option", { name: "MAY" }));
+    await user.click(screen.getByRole("option", { name: "JUL" }));
+
+    const monthButton = screen.getByRole("button", { name: "Month" });
+    expect(monthButton).toHaveTextContent("JAN, MAR, MAY, JUL");
+    expect(monthButton).toHaveAttribute("title", "JAN, MAR, MAY, JUL");
+  });
+
+  it("supports opt-in weekday multiselect", async () => {
+    const user = userEvent.setup();
+    const handleChange = vi.fn();
+
+    render(
+      <CronFieldEditor
+        value="0 0 6 * * *"
+        timezone="UTC"
+        onChange={handleChange}
+        multiselect={{ weekday: true }}
+      />,
+    );
+
+    await chooseOption(user, "Day type", "Specific weekday");
+    await user.click(screen.getByRole("button", { name: "Weekday" }));
+    await user.click(screen.getByRole("option", { name: "WED" }));
+
+    expect(handleChange).toHaveBeenLastCalledWith("0 0 6 * * 1,3");
+    expect(screen.getByRole("button", { name: "Weekday" })).toHaveTextContent("MON, WED");
+  });
+
+  it("keeps an all-weekdays multiselect selection instead of collapsing to a single weekday", async () => {
+    const user = userEvent.setup();
+    const handleChange = vi.fn();
+
+    render(
+      <CronFieldEditor
+        value="0 0 6 * * 1"
+        timezone="UTC"
+        onChange={handleChange}
+        multiselect={{ weekday: true }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Weekday" }));
+    await user.click(screen.getByRole("option", { name: "SUN" }));
+    await user.click(screen.getByRole("option", { name: "TUE" }));
+    await user.click(screen.getByRole("option", { name: "WED" }));
+    await user.click(screen.getByRole("option", { name: "THU" }));
+    await user.click(screen.getByRole("option", { name: "FRI" }));
+    await user.click(screen.getByRole("option", { name: "SAT" }));
+
+    expect(handleChange).toHaveBeenLastCalledWith("0 0 6 * * 0,1,2,3,4,5,6");
+  });
+
+  it("supports opt-in date multiselect", async () => {
+    const user = userEvent.setup();
+    const handleChange = vi.fn();
+
+    render(
+      <CronFieldEditor
+        value="0 0 6 1 1 *"
+        timezone="UTC"
+        onChange={handleChange}
+        multiselect={{ date: true }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Date" }));
+    await user.click(screen.getByRole("option", { name: "15" }));
+
+    expect(handleChange).toHaveBeenLastCalledWith("0 0 6 1,15 1 *");
+    expect(screen.getByRole("button", { name: "Date" })).toHaveTextContent("1, 15");
+  });
+
+  it("supports opt-in hour multiselect", async () => {
+    const user = userEvent.setup();
+    const handleChange = vi.fn();
+
+    render(
+      <CronFieldEditor
+        value="0 0 6 * * *"
+        timezone="UTC"
+        onChange={handleChange}
+        multiselect={{ hour: true }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Hour" }));
+    await user.click(screen.getByRole("option", { name: "09" }));
+
+    expect(handleChange).toHaveBeenLastCalledWith("0 0 6,9 * * *");
+    expect(screen.getByRole("button", { name: "Hour" })).toHaveTextContent("06, 09");
+  });
+
+  it("disables timezone-unsafe multiselect hour choices with guidance to use UTC", async () => {
+    const user = userEvent.setup();
+    const handleChange = vi.fn();
+
+    render(
+      <CronFieldEditor
+        value="0 0 0 * * 1"
+        timezone="Europe/Kiev"
+        onChange={handleChange}
+        multiselect={{ hour: true }}
+        displayFormat={{ hourCycle: "12h", leadingZero: true }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Hour" }));
+    await user.click(screen.getByRole("option", { name: "04:00 AM" }));
+
+    handleChange.mockClear();
+
+    const blockedHourOption = screen.getByRole("option", { name: "01:00 AM" });
+    expect(blockedHourOption).toBeDisabled();
+    expect(blockedHourOption).toHaveAttribute(
+      "title",
+      "You cannot select this option because of your timezone. use UTC instead",
+    );
+
+    await user.click(blockedHourOption);
+
+    expect(handleChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Hour" })).toHaveTextContent(
+      "03:00 AM, 04:00 AM",
+    );
+  });
+
+  it("supports opt-in minute multiselect", async () => {
+    const user = userEvent.setup();
+    const handleChange = vi.fn();
+
+    render(
+      <CronFieldEditor
+        value="0 0 6 * * *"
+        timezone="UTC"
+        onChange={handleChange}
+        multiselect={{ minute: true }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Minute" }));
+    await user.click(screen.getByRole("option", { name: "15" }));
+
+    expect(handleChange).toHaveBeenLastCalledWith("0 0,15 6 * * *");
+    expect(screen.getByRole("button", { name: "Minute" })).toHaveTextContent("00, 15");
   });
 });
 

@@ -29,20 +29,89 @@ const DAY_MODE_OPTIONS = [
   { value: "date", label: "Specific date" },
 ] as const;
 
+const SHORT_MONTH_LABELS = new Map([
+  ["1", "JAN"],
+  ["2", "FEB"],
+  ["3", "MAR"],
+  ["4", "APR"],
+  ["5", "MAY"],
+  ["6", "JUN"],
+  ["7", "JUL"],
+  ["8", "AUG"],
+  ["9", "SEP"],
+  ["10", "OCT"],
+  ["11", "NOV"],
+  ["12", "DEC"],
+]);
+
+const SHORT_WEEKDAY_LABELS = new Map([
+  ["0", "SUN"],
+  ["1", "MON"],
+  ["2", "TUE"],
+  ["3", "WED"],
+  ["4", "THU"],
+  ["5", "FRI"],
+  ["6", "SAT"],
+]);
+
+const getIsTimeZoneUTC = (timezone: string) => timezone.toUpperCase() === "UTC";
+
 export function CronFieldEditor({
   value,
-  timezone,
   onChange,
   onValidityChange,
-  disabled = false,
   className,
   dropdownAppearance,
   displayFormat,
   errorClassName,
+  multiselect,
+  disabled = false,
+  timezone = "UTC",
 }: CronFieldEditorProps) {
   const [draft, setDraft] = useState<ScheduleDraft>(DEFAULT_SCHEDULE);
-  const [commitValidity, setCommitValidity] = useState<ValidityState | null>(null);
-  const derivedValidity = useMemo(() => deriveValidity(value, timezone), [timezone, value]);
+  const [commitValidity, setCommitValidity] = useState<ValidityState | null>(
+    null,
+  );
+  const derivedValidity = useMemo(
+    () => deriveValidity(value, timezone),
+    [timezone, value],
+  );
+  const isTimezoneUTC = useMemo(() => getIsTimeZoneUTC(timezone), [timezone]);
+
+  const {
+    monthMultiselectEnabled,
+    weekdayMultiselectEnabled,
+    dateMultiselectEnabled,
+    hourMultiselectEnabled,
+    minuteMultiselectEnabled,
+  } = useMemo(() => {
+    const result = {
+      monthMultiselectEnabled: false,
+      weekdayMultiselectEnabled: false,
+      dateMultiselectEnabled: false,
+      hourMultiselectEnabled: false,
+      minuteMultiselectEnabled: false,
+    };
+
+    if (!isTimezoneUTC) {
+      return result;
+    }
+
+    result.monthMultiselectEnabled = multiselect?.month ?? false;
+    result.weekdayMultiselectEnabled = multiselect?.weekday ?? false;
+    result.dateMultiselectEnabled = multiselect?.date ?? false;
+    result.hourMultiselectEnabled = multiselect?.hour ?? false;
+    result.minuteMultiselectEnabled = multiselect?.minute ?? false;
+
+    return result;
+  }, [isTimezoneUTC, multiselect]);
+
+  useEffect(() => {
+    const normalizedDraft = normalizeDraft(DEFAULT_SCHEDULE);
+    const initialCron = buildUtcCronExpression(normalizedDraft, timezone) ?? "";
+
+    onChange(initialCron);
+  }, [timezone]);
 
   useEffect(() => {
     setCommitValidity(null);
@@ -64,7 +133,10 @@ export function CronFieldEditor({
     const maxDay = maxDayForMonth(draft.month);
     return Array.from({ length: maxDay }, (_, index) => {
       const day = index + 1;
-      return { value: day.toString(), label: day.toString() };
+      return {
+        value: day.toString(),
+        label: day.toString(),
+      };
     });
   }, [draft.month]);
 
@@ -91,28 +163,83 @@ export function CronFieldEditor({
     onChange(nextCron);
   }
 
-  const summary = validity.valid ? formatScheduleSummary(draft, timezone, displayFormat) : null;
+  const summary = validity.valid
+    ? formatScheduleSummary(draft, timezone, displayFormat)
+    : null;
   const dropdownClassNames = dropdownAppearance?.classNames;
+  const monthDropdownOptions = useMemo(
+    () =>
+      monthOptions().map((option) => ({
+        ...option,
+        label: option.label,
+        shortLabel: SHORT_MONTH_LABELS.get(option.value) ?? option.label,
+      })),
+    [],
+  );
+
+  const weekdayDropdownOptions = useMemo(
+    () =>
+      weekdayOptions().map((option) => ({
+        ...option,
+        label: option.label,
+        shortLabel: SHORT_WEEKDAY_LABELS.get(option.value) ?? option.label,
+      })),
+    [],
+  );
+
+  const hourDropdownOptions = useMemo(
+    () => [
+      { value: "*", label: "Every hour" },
+      ...Array.from({ length: 24 }, (_, hour) => ({
+        value: hour.toString(),
+        label: formatHourOptionLabel(hour, displayFormat),
+      })),
+    ],
+    [displayFormat],
+  );
+  const minuteDropdownOptions = useMemo(
+    () => [
+      { value: "*", label: "Every minute" },
+      ...Array.from({ length: 60 }, (_, minute) => ({
+        value: minute.toString(),
+        label: formatTimeValueLabel(minute, displayFormat),
+      })),
+    ],
+    [displayFormat],
+  );
 
   return (
-    <section className={["rcf-editor", className].filter(Boolean).join(" ")} aria-label="Cron schedule editor">
+    <section
+      className={["rcf-editor", className].filter(Boolean).join(" ")}
+      aria-label="Cron schedule editor"
+    >
       <div className="rcf-grid">
         <label className="rcf-field">
           <span>Month</span>
           <Dropdown
             label="Month"
-            value={draft.month === null ? "*" : draft.month.toString()}
-            onChange={(nextValue) =>
+            selectedValues={
+              draft.month === null
+                ? ["*"]
+                : draft.month.map((value) => value.toString())
+            }
+            valueLabel={formatDropdownValueLabel(
+              draft.month === null
+                ? ["*"]
+                : draft.month.map((value) => value.toString()),
+              monthDropdownOptions,
+            )}
+            onChange={(nextValues) =>
               commit({
                 ...draft,
-                month:
-                  nextValue === "*" ? null : Number.parseInt(nextValue, 10),
+                month: parseMonthValues(nextValues),
               })
             }
-            options={monthOptions()}
+            options={monthDropdownOptions}
             disabled={disabled}
             classNames={dropdownClassNames}
             triggerIcon={dropdownAppearance?.triggerIcon}
+            multiple={monthMultiselectEnabled}
           />
         </label>
 
@@ -120,11 +247,12 @@ export function CronFieldEditor({
           <span>Day type</span>
           <Dropdown
             label="Day type"
-            value={draft.dayMode}
-            onChange={(nextValue) =>
+            selectedValues={[draft.dayMode]}
+            onChange={(nextValues) =>
               commit({
                 ...draft,
-                dayMode: nextValue as ScheduleDraft["dayMode"],
+                dayMode: (nextValues[0] ??
+                  "every_day") as ScheduleDraft["dayMode"],
               })
             }
             options={DAY_MODE_OPTIONS.map((option) => ({ ...option }))}
@@ -139,17 +267,22 @@ export function CronFieldEditor({
             <span>Weekday</span>
             <Dropdown
               label="Weekday"
-              value={draft.dayOfWeek.toString()}
-              onChange={(nextValue) =>
+              selectedValues={draft.dayOfWeek.map((value) => value.toString())}
+              valueLabel={formatDropdownValueLabel(
+                draft.dayOfWeek.map((value) => value.toString()),
+                weekdayDropdownOptions,
+              )}
+              onChange={(nextValues) =>
                 commit({
                   ...draft,
-                  dayOfWeek: Number.parseInt(nextValue, 10),
+                  dayOfWeek: parseWeekdayValues(nextValues),
                 })
               }
-              options={weekdayOptions()}
+              options={weekdayDropdownOptions}
               disabled={disabled}
               classNames={dropdownClassNames}
               triggerIcon={dropdownAppearance?.triggerIcon}
+              multiple={weekdayMultiselectEnabled}
             />
           </label>
         )}
@@ -159,17 +292,22 @@ export function CronFieldEditor({
             <span>Date</span>
             <Dropdown
               label="Date"
-              value={draft.dayOfMonth.toString()}
-              onChange={(nextValue) =>
+              selectedValues={draft.dayOfMonth.map((value) => value.toString())}
+              valueLabel={formatDropdownValueLabel(
+                draft.dayOfMonth.map((value) => value.toString()),
+                dateOptions,
+              )}
+              onChange={(nextValues) =>
                 commit({
                   ...draft,
-                  dayOfMonth: Number.parseInt(nextValue, 10),
+                  dayOfMonth: parseSelectedNumbers(nextValues, [1]),
                 })
               }
               options={dateOptions}
               disabled={disabled}
               classNames={dropdownClassNames}
               triggerIcon={dropdownAppearance?.triggerIcon}
+              multiple={dateMultiselectEnabled}
             />
           </label>
         )}
@@ -178,24 +316,28 @@ export function CronFieldEditor({
           <span>Hour</span>
           <Dropdown
             label="Hour"
-            value={draft.hour === null ? "*" : draft.hour.toString()}
-            onChange={(nextValue) =>
+            selectedValues={
+              draft.hour === null
+                ? ["*"]
+                : draft.hour.map((value) => value.toString())
+            }
+            valueLabel={formatDropdownValueLabel(
+              draft.hour === null
+                ? ["*"]
+                : draft.hour.map((value) => value.toString()),
+              hourDropdownOptions,
+            )}
+            onChange={(nextValues) =>
               commit({
                 ...draft,
-                hour:
-                  nextValue === "*" ? null : Number.parseInt(nextValue, 10),
+                hour: parseOptionalSelectedNumbers(nextValues),
               })
             }
-            options={[
-              { value: "*", label: "Every hour" },
-              ...Array.from({ length: 24 }, (_, hour) => ({
-                value: hour.toString(),
-                label: formatHourOptionLabel(hour, displayFormat),
-              })),
-            ]}
+            options={hourDropdownOptions}
             disabled={disabled}
             classNames={dropdownClassNames}
             triggerIcon={dropdownAppearance?.triggerIcon}
+            multiple={hourMultiselectEnabled}
           />
         </label>
 
@@ -203,24 +345,28 @@ export function CronFieldEditor({
           <span>Minute</span>
           <Dropdown
             label="Minute"
-            value={draft.minute === null ? "*" : draft.minute.toString()}
-            onChange={(nextValue) =>
+            selectedValues={
+              draft.minute === null
+                ? ["*"]
+                : draft.minute.map((value) => value.toString())
+            }
+            valueLabel={formatDropdownValueLabel(
+              draft.minute === null
+                ? ["*"]
+                : draft.minute.map((value) => value.toString()),
+              minuteDropdownOptions,
+            )}
+            onChange={(nextValues) =>
               commit({
                 ...draft,
-                minute:
-                  nextValue === "*" ? null : Number.parseInt(nextValue, 10),
+                minute: parseOptionalSelectedNumbers(nextValues),
               })
             }
-            options={[
-              { value: "*", label: "Every minute" },
-              ...Array.from({ length: 60 }, (_, minute) => ({
-                value: minute.toString(),
-                label: formatTimeValueLabel(minute, displayFormat),
-              })),
-            ]}
+            options={minuteDropdownOptions}
             disabled={disabled}
             classNames={dropdownClassNames}
             triggerIcon={dropdownAppearance?.triggerIcon}
+            multiple={minuteMultiselectEnabled}
           />
         </label>
 
@@ -228,12 +374,16 @@ export function CronFieldEditor({
           <span>Second</span>
           <Dropdown
             label="Second"
-            value={draft.second === null ? "*" : draft.second.toString()}
-            onChange={(nextValue) =>
+            selectedValues={[
+              draft.second === null ? "*" : draft.second.toString(),
+            ]}
+            onChange={(nextValues) =>
               commit({
                 ...draft,
                 second:
-                  nextValue === "*" ? null : Number.parseInt(nextValue, 10),
+                  nextValues[0] === "*"
+                    ? null
+                    : Number.parseInt(nextValues[0] ?? "0", 10),
               })
             }
             options={[
@@ -253,12 +403,66 @@ export function CronFieldEditor({
       {summary ? <p className="rcf-summary">{summary}</p> : null}
 
       {!validity.valid ? (
-        <p className={["rcf-error", errorClassName].filter(Boolean).join(" ")} role="alert">
+        <p
+          className={["rcf-error", errorClassName].filter(Boolean).join(" ")}
+          role="alert"
+        >
           {validity.message}
         </p>
       ) : null}
     </section>
   );
+}
+
+function parseMonthValues(values: string[]): number[] | null {
+  return parseOptionalSelectedNumbers(values);
+}
+
+function parseWeekdayValues(values: string[]): number[] {
+  return parseSelectedNumbers(values, [1]);
+}
+
+function parseOptionalSelectedNumbers(values: string[]): number[] | null {
+  if (values.length === 0 || values.includes("*")) {
+    return null;
+  }
+
+  return parseSelectedNumbers(values, []);
+}
+
+function parseSelectedNumbers(values: string[], fallback: number[]): number[] {
+  if (values.length === 0) {
+    return fallback;
+  }
+
+  return values.map((value) => Number.parseInt(value, 10));
+}
+
+function formatDropdownValueLabel(
+  selectedValues: string[],
+  options: Array<{ value: string; label: string; shortLabel?: string }>,
+): string {
+  const labels = options
+    .filter((option) => selectedValues.includes(option.value))
+    .map((option) => option.shortLabel ?? option.label);
+
+  return formatVisibleLabelList(labels);
+}
+
+function formatVisibleLabelList(labels: string[]): string {
+  if (labels.length === 0) {
+    return "";
+  }
+
+  if (labels.length === 1) {
+    return labels[0];
+  }
+
+  if (labels.length === 2) {
+    return `${labels[0]}, ${labels[1]}`;
+  }
+
+  return `${labels.slice(0, -1).join(", ")}, ${labels[labels.length - 1]}`;
 }
 
 function deriveValidity(cron: string, timezone: string): ValidityState {
@@ -275,7 +479,7 @@ function deriveValidity(cron: string, timezone: string): ValidityState {
       valid: false,
       reason: "unsupported_cron",
       message:
-        "This UTC cron value is not supported by the editor. Use a six-field cron with numeric values or wildcards in the time fields.",
+        "This UTC cron value is not supported by the editor. Use a six-field cron with numeric values, supported comma lists, or wildcards in the supported fields.",
     };
   }
 

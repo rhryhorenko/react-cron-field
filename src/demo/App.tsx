@@ -17,6 +17,11 @@ export function App() {
   const [validityMessage, setValidityMessage] = useState("Valid schedule");
   const [hourCycle, setHourCycle] = useState<"12h" | "24h">("12h");
   const [leadingZero, setLeadingZero] = useState(true);
+  const [monthMultiselect, setMonthMultiselect] = useState(true);
+  const [weekdayMultiselect, setWeekdayMultiselect] = useState(true);
+  const [dateMultiselect, setDateMultiselect] = useState(true);
+  const [hourMultiselect, setHourMultiselect] = useState(true);
+  const [minuteMultiselect, setMinuteMultiselect] = useState(true);
 
   const parsed = parseUtcCronExpression(cron, timezone);
   const summary = parsed
@@ -68,6 +73,51 @@ export function App() {
             />
             <span>Use leading zero labels</span>
           </label>
+
+          <label className="demo-checkbox">
+            <input
+              checked={monthMultiselect}
+              type="checkbox"
+              onChange={(event) => setMonthMultiselect(event.target.checked)}
+            />
+            <span>Enable month multiselect</span>
+          </label>
+
+          <label className="demo-checkbox">
+            <input
+              checked={weekdayMultiselect}
+              type="checkbox"
+              onChange={(event) => setWeekdayMultiselect(event.target.checked)}
+            />
+            <span>Enable weekday multiselect</span>
+          </label>
+
+          <label className="demo-checkbox">
+            <input
+              checked={dateMultiselect}
+              type="checkbox"
+              onChange={(event) => setDateMultiselect(event.target.checked)}
+            />
+            <span>Enable date multiselect</span>
+          </label>
+
+          <label className="demo-checkbox">
+            <input
+              checked={hourMultiselect}
+              type="checkbox"
+              onChange={(event) => setHourMultiselect(event.target.checked)}
+            />
+            <span>Enable hour multiselect</span>
+          </label>
+
+          <label className="demo-checkbox">
+            <input
+              checked={minuteMultiselect}
+              type="checkbox"
+              onChange={(event) => setMinuteMultiselect(event.target.checked)}
+            />
+            <span>Enable minute multiselect</span>
+          </label>
         </div>
       </section>
 
@@ -77,6 +127,13 @@ export function App() {
         className="demo-editor"
         errorClassName="demo-editor-error"
         displayFormat={{ hourCycle, leadingZero }}
+        multiselect={{
+          month: monthMultiselect,
+          weekday: weekdayMultiselect,
+          date: dateMultiselect,
+          hour: hourMultiselect,
+          minute: minuteMultiselect,
+        }}
         dropdownAppearance={{
           classNames: {
             root: "demo-dropdown",

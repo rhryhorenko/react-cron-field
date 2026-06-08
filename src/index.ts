@@ -6,6 +6,7 @@ export type {
   DisplayFormat,
   DropdownAppearance,
   DropdownClassNames,
+  MultiselectConfig,
   ScheduleDraft,
   ValidityState,
 } from "./types";

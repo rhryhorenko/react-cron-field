@@ -17,12 +17,10 @@
 }
 
 .rcf-grid {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
-}
-
-.rcf-grid {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items: flex-start;
 }
 
 .rcf-field {
@@ -30,6 +28,8 @@
   gap: 0.4rem;
   font-weight: 400;
   font-size: 14px;
+  flex: 1 1 180px;
+  min-width: 180px;
 }
 
 .rcf-summary {

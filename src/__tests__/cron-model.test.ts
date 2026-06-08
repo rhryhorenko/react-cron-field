@@ -13,10 +13,10 @@ describe("cron model", () => {
       buildCronExpression({
         month: null,
         dayMode: "every_day",
-        dayOfWeek: 1,
-        dayOfMonth: 1,
-        hour: 9,
-        minute: 30,
+        dayOfWeek: [1],
+        dayOfMonth: [1],
+        hour: [9],
+        minute: [30],
         second: 15,
       }),
     ).toBe("15 30 9 * * *");
@@ -27,10 +27,10 @@ describe("cron model", () => {
       buildCronExpression({
         month: null,
         dayMode: "weekday",
-        dayOfWeek: 1,
-        dayOfMonth: 1,
-        hour: 0,
-        minute: 0,
+        dayOfWeek: [1],
+        dayOfMonth: [1],
+        hour: [0],
+        minute: [0],
         second: null,
       }),
     ).toBe("* 0 0 * * 1");
@@ -41,8 +41,8 @@ describe("cron model", () => {
       buildCronExpression({
         month: null,
         dayMode: "every_day",
-        dayOfWeek: 1,
-        dayOfMonth: 1,
+        dayOfWeek: [1],
+        dayOfMonth: [1],
         hour: null,
         minute: null,
         second: 15,
@@ -55,8 +55,8 @@ describe("cron model", () => {
       buildCronExpression({
         month: null,
         dayMode: "every_day",
-        dayOfWeek: 1,
-        dayOfMonth: 1,
+        dayOfWeek: [1],
+        dayOfMonth: [1],
         hour: null,
         minute: null,
         second: null,
@@ -68,10 +68,10 @@ describe("cron model", () => {
     expect(parseCronExpression("* 0 0 * * 1")).toEqual({
       month: null,
       dayMode: "weekday",
-      dayOfWeek: 1,
-      dayOfMonth: 1,
-      hour: 0,
-      minute: 0,
+      dayOfWeek: [1],
+      dayOfMonth: [1],
+      hour: [0],
+      minute: [0],
       second: null,
     });
   });
@@ -80,16 +80,85 @@ describe("cron model", () => {
     expect(parseCronExpression("0 0 9 1 5 1")).toBeNull();
   });
 
+  it("serializes and parses explicit month and weekday lists", () => {
+    const cron = buildCronExpression({
+      month: [1, 3],
+      dayMode: "weekday",
+      dayOfWeek: [1, 3],
+      dayOfMonth: [1],
+      hour: [9],
+      minute: [30],
+      second: 0,
+    });
+
+    expect(cron).toBe("0 30 9 * 1,3 1,3");
+    expect(parseCronExpression(cron)).toEqual({
+      month: [1, 3],
+      dayMode: "weekday",
+      dayOfWeek: [1, 3],
+      dayOfMonth: [1],
+      hour: [9],
+      minute: [30],
+      second: 0,
+    });
+  });
+
+  it("preserves an all-weekdays selection instead of collapsing it to one weekday", () => {
+    const cron = buildCronExpression({
+      month: null,
+      dayMode: "weekday",
+      dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      dayOfMonth: [1],
+      hour: [9],
+      minute: [30],
+      second: 0,
+    });
+
+    expect(cron).toBe("0 30 9 * * 0,1,2,3,4,5,6");
+    expect(parseCronExpression(cron)).toEqual({
+      month: null,
+      dayMode: "weekday",
+      dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      dayOfMonth: [1],
+      hour: [9],
+      minute: [30],
+      second: 0,
+    });
+  });
+
+  it("serializes and parses explicit date, hour, and minute lists", () => {
+    const cron = buildCronExpression({
+      month: [1, 3],
+      dayMode: "date",
+      dayOfWeek: [1],
+      dayOfMonth: [1, 15],
+      hour: [9, 17],
+      minute: [0, 30],
+      second: 15,
+    });
+
+    expect(cron).toBe("15 0,30 9,17 1,15 1,3 *");
+    expect(parseCronExpression(cron)).toEqual({
+      month: [1, 3],
+      dayMode: "date",
+      dayOfWeek: [1],
+      dayOfMonth: [1, 15],
+      hour: [9, 17],
+      minute: [0, 30],
+      second: 15,
+    });
+  });
+
   it("formats a human-readable every-second weekday summary with timezone", () => {
     expect(
       formatScheduleSummary(
         {
           month: null,
           dayMode: "weekday",
-          dayOfWeek: 1,
-          dayOfMonth: 1,
-          hour: 0,
-          minute: 0,
+          dayOfWeek: [1],
+          dayOfMonth: [1],
+          hour: [0],
+          minute: [0],
           second: null,
         },
         "America/New_York",
@@ -103,10 +172,10 @@ describe("cron model", () => {
         {
           month: null,
           dayMode: "every_day",
-          dayOfWeek: 1,
-          dayOfMonth: 1,
-          hour: 3,
-          minute: 5,
+          dayOfWeek: [1],
+          dayOfMonth: [1],
+          hour: [3],
+          minute: [5],
           second: 9,
         },
         "UTC",
@@ -121,10 +190,10 @@ describe("cron model", () => {
         {
           month: null,
           dayMode: "every_day",
-          dayOfWeek: 1,
-          dayOfMonth: 1,
-          hour: 15,
-          minute: 5,
+          dayOfWeek: [1],
+          dayOfMonth: [1],
+          hour: [15],
+          minute: [5],
           second: 9,
         },
         "UTC",
@@ -139,10 +208,10 @@ describe("cron model", () => {
         {
           month: null,
           dayMode: "every_day",
-          dayOfWeek: 1,
-          dayOfMonth: 1,
-          hour: 3,
-          minute: 0,
+          dayOfWeek: [1],
+          dayOfMonth: [1],
+          hour: [3],
+          minute: [0],
           second: 30,
         },
         "Europe/Kiev",
@@ -156,8 +225,8 @@ describe("cron model", () => {
         {
           month: null,
           dayMode: "every_day",
-          dayOfWeek: 1,
-          dayOfMonth: 1,
+          dayOfWeek: [1],
+          dayOfMonth: [1],
           hour: null,
           minute: null,
           second: 45,
@@ -173,10 +242,10 @@ describe("cron model", () => {
         {
           month: null,
           dayMode: "weekday",
-          dayOfWeek: 1,
-          dayOfMonth: 1,
+          dayOfWeek: [1],
+          dayOfMonth: [1],
           hour: null,
-          minute: 0,
+          minute: [0],
           second: 0,
         },
         "Europe/Kiev",
@@ -188,23 +257,57 @@ describe("cron model", () => {
     expect(parseUtcCronExpression("30 0 0 * * *", "Europe/Kiev")).toEqual({
       month: null,
       dayMode: "every_day",
-      dayOfWeek: 1,
-      dayOfMonth: 1,
-      hour: 3,
-      minute: 0,
+      dayOfWeek: [1],
+      dayOfMonth: [1],
+      hour: [3],
+      minute: [0],
       second: 30,
     });
   });
 
   it("shifts dated schedules across month boundaries when a specific month is selected", () => {
     expect(parseUtcCronExpression("0 30 22 31 12 *", "Europe/Kiev")).toEqual({
-      month: 1,
+      month: [1],
       dayMode: "date",
-      dayOfWeek: 1,
-      dayOfMonth: 1,
-      hour: 1,
-      minute: 30,
+      dayOfWeek: [1],
+      dayOfMonth: [1],
+      hour: [1],
+      minute: [30],
       second: 0,
     });
+  });
+
+  it("formats multi-select weekday and month summaries deterministically", () => {
+    expect(
+      formatScheduleSummary(
+        {
+          month: [1, 3, 5, 7],
+          dayMode: "weekday",
+          dayOfWeek: [1, 3, 5, 6],
+          dayOfMonth: [1],
+          hour: [9],
+          minute: [0],
+          second: 0,
+        },
+        "UTC",
+      ),
+    ).toBe("Runs at 9:00:00 AM on Monday, Wednesday, Friday, and Saturday in January, March, May, and July (UTC)");
+  });
+
+  it("formats multiselect dates and times in the summary", () => {
+    expect(
+      formatScheduleSummary(
+        {
+          month: [1],
+          dayMode: "date",
+          dayOfWeek: [1],
+          dayOfMonth: [1, 15],
+          hour: [9, 17],
+          minute: [0, 30],
+          second: 15,
+        },
+        "UTC",
+      ),
+    ).toBe("Runs at 9:00:15 AM, 9:30:15 AM, 5:00:15 PM, and 5:30:15 PM on days 1 and 15 of January (UTC)");
   });
 });

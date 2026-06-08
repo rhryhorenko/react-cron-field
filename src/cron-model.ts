@@ -1,13 +1,13 @@
-import type { ScheduleDraft } from "./types";
+import type { MonthSelection, ScheduleDraft } from "./types";
 import { getCurrentTimezoneOffsetMinutes } from "./timezone";
 
 export const DEFAULT_SCHEDULE: ScheduleDraft = {
   month: null,
   dayMode: "every_day",
-  dayOfWeek: 1,
-  dayOfMonth: 1,
-  hour: 9,
-  minute: 0,
+  dayOfWeek: [1],
+  dayOfMonth: [1],
+  hour: [9],
+  minute: [0],
   second: 0,
 };
 
@@ -18,19 +18,19 @@ const SHIFT_YEAR = 2024;
 export function buildCronExpression(draft: ScheduleDraft): string {
   const normalized = normalizeDraft(draft);
   const second = formatTimeToken(normalized.second, 0, 59);
-  const minute = formatTimeToken(normalized.minute, 0, 59);
-  const hour = formatTimeToken(normalized.hour, 0, 23);
-  const month = normalized.month === null ? "*" : normalized.month.toString();
+  const minute = formatSelectionToken(normalized.minute);
+  const hour = formatSelectionToken(normalized.hour);
+  const month = formatSelectionToken(normalized.month);
 
   if (normalized.dayMode === "every_day") {
     return `${second} ${minute} ${hour} * ${month} *`;
   }
 
   if (normalized.dayMode === "weekday") {
-    return `${second} ${minute} ${hour} * ${month} ${normalized.dayOfWeek}`;
+    return `${second} ${minute} ${hour} * ${month} ${formatSelectionToken(normalized.dayOfWeek)}`;
   }
 
-  return `${second} ${minute} ${hour} ${normalized.dayOfMonth} ${month} *`;
+  return `${second} ${minute} ${hour} ${formatSelectionToken(normalized.dayOfMonth)} ${month} *`;
 }
 
 export function buildUtcCronExpression(draft: ScheduleDraft, timezone: string): string | null {
@@ -57,11 +57,11 @@ export function parseCronExpression(cron: string): ScheduleDraft | null {
 
   const [secondToken, minuteToken, hourToken, dayOfMonthToken, monthToken, dayOfWeekToken] = parts;
   const second = parseNumericOrWildcard(secondToken, 0, 59);
-  const minute = parseNumericOrWildcard(minuteToken, 0, 59);
-  const hour = parseNumericOrWildcard(hourToken, 0, 23);
-  const month = parseNumericOrWildcard(monthToken, 1, 12);
-  const dayOfMonth = parseNumericOrWildcard(dayOfMonthToken, 1, 31);
-  const dayOfWeek = parseNumericOrWildcard(dayOfWeekToken, 0, 6);
+  const minute = parseNumericListOrWildcard(minuteToken, 0, 59);
+  const hour = parseNumericListOrWildcard(hourToken, 0, 23);
+  const month = parseNumericListOrWildcard(monthToken, 1, 12);
+  const dayOfMonth = parseNumericListOrWildcard(dayOfMonthToken, 1, 31);
+  const dayOfWeek = parseNumericListOrWildcard(dayOfWeekToken, 0, 6);
 
   if (second === null || minute === null || hour === null || month === null || dayOfMonth === null || dayOfWeek === null) {
     return null;
@@ -76,31 +76,31 @@ export function parseCronExpression(cron: string): ScheduleDraft | null {
     return normalizeDraft({
       month: resolvedMonth,
       dayMode: "every_day",
-      dayOfWeek: 1,
-      dayOfMonth: 1,
+      dayOfWeek: [1],
+      dayOfMonth: [1],
       hour: resolvedHour,
       minute: resolvedMinute,
       second: resolvedSecond,
     });
   }
 
-  if (dayOfMonth === "*" && typeof dayOfWeek === "number") {
+  if (dayOfMonth === "*" && dayOfWeek !== "*") {
     return normalizeDraft({
       month: resolvedMonth,
       dayMode: "weekday",
       dayOfWeek,
-      dayOfMonth: 1,
+      dayOfMonth: [1],
       hour: resolvedHour,
       minute: resolvedMinute,
       second: resolvedSecond,
     });
   }
 
-  if (typeof dayOfMonth === "number" && dayOfWeek === "*") {
+  if (dayOfMonth !== "*" && dayOfWeek === "*") {
     return normalizeDraft({
       month: resolvedMonth,
       dayMode: "date",
-      dayOfWeek: 1,
+      dayOfWeek: [1],
       dayOfMonth,
       hour: resolvedHour,
       minute: resolvedMinute,
@@ -155,25 +155,51 @@ export function weekdayOptions(): Array<{ value: string; label: string }> {
   ];
 }
 
-export function maxDayForMonth(month: number | null): number {
+export function maxDayForMonth(month: MonthSelection): number {
   if (month === null) {
     return 31;
   }
 
-  return MONTH_LENGTHS[clampInteger(month, 1, 12) - 1];
+  return Math.min(...month.map((value) => MONTH_LENGTHS[clampInteger(value, 1, 12) - 1]));
 }
 
 export function normalizeDraft(draft: ScheduleDraft): ScheduleDraft {
-  const month = draft.month === null ? null : clampInteger(draft.month, 1, 12);
+  const month = normalizeSelection(draft.month, 1, 12, { collapseFullSelection: true });
+  const dayOfWeek = normalizeSelection(draft.dayOfWeek, 0, 6, { collapseFullSelection: false }) ?? [1];
+  const dayOfMonth = normalizeSelection(draft.dayOfMonth, 1, maxDayForMonth(month), { collapseFullSelection: false }) ?? [1];
+  const hour = normalizeSelection(draft.hour, 0, 23, { collapseFullSelection: true });
+  const minute = normalizeSelection(draft.minute, 0, 59, { collapseFullSelection: true });
   return {
     month,
     dayMode: draft.dayMode,
-    dayOfWeek: WEEKDAY_ORDER.includes(draft.dayOfWeek) ? draft.dayOfWeek : 1,
-    dayOfMonth: clampInteger(draft.dayOfMonth, 1, maxDayForMonth(month)),
-    hour: draft.hour === null ? null : clampInteger(draft.hour, 0, 23),
-    minute: draft.minute === null ? null : clampInteger(draft.minute, 0, 59),
+    dayOfWeek: dayOfWeek.filter((value) => WEEKDAY_ORDER.includes(value)),
+    dayOfMonth,
+    hour,
+    minute,
     second: draft.second === null ? null : clampInteger(draft.second, 0, 59),
   };
+}
+
+function normalizeSelection(
+  values: number[] | null,
+  min: number,
+  max: number,
+  options: { collapseFullSelection: boolean },
+): number[] | null {
+  if (values === null) {
+    return null;
+  }
+
+  const normalized = Array.from(new Set(values.map((value) => clampInteger(value, min, max)))).sort((left, right) => left - right);
+  if (normalized.length === 0) {
+    return null;
+  }
+
+  if (options.collapseFullSelection && normalized.length === max - min + 1) {
+    return null;
+  }
+
+  return normalized;
 }
 
 function parseNumericOrWildcard(token: string, min: number, max: number): number | "*" | null {
@@ -193,12 +219,42 @@ function parseNumericOrWildcard(token: string, min: number, max: number): number
   return parsed;
 }
 
+function parseNumericListOrWildcard(token: string, min: number, max: number): number[] | "*" | null {
+  if (token === "*") {
+    return "*";
+  }
+
+  if (token.includes("-") || token.includes("/")) {
+    return null;
+  }
+
+  const parts = token.split(",");
+  if (parts.some((part) => part.length === 0)) {
+    return null;
+  }
+
+  const parsed = parts.map((part) => parseNumericOrWildcard(part, min, max));
+  if (parsed.some((value) => value === null || value === "*")) {
+    return null;
+  }
+
+  return Array.from(new Set(parsed as number[])).sort((left, right) => left - right);
+}
+
 function formatTimeToken(value: number | null, min: number, max: number): string {
   if (value === null) {
     return "*";
   }
 
   return clampInteger(value, min, max).toString();
+}
+
+function formatSelectionToken(values: number[] | null): string {
+  if (values === null) {
+    return "*";
+  }
+
+  return values.join(",");
 }
 
 function clampInteger(value: number, min: number, max: number): number {
@@ -229,12 +285,22 @@ function shiftEveryDayDraft(draft: ScheduleDraft, deltaMinutes: number): Schedul
       return null;
     }
 
-    const shiftedHour = wrapHour(draft.hour + deltaMinutes / 60);
-    return { ...draft, hour: shiftedHour };
+    return {
+      ...draft,
+      hour: draft.hour.map((value) => wrapHour(value + deltaMinutes / 60)),
+    };
   }
 
-  const shifted = shiftFixedTime(draft.hour, draft.minute, deltaMinutes);
-  return { ...draft, hour: shifted.hour, minute: shifted.minute };
+  const shifted = shiftTimeSelections(draft.hour, draft.minute, deltaMinutes);
+  if (!shifted) {
+    return null;
+  }
+
+  return {
+    ...draft,
+    hour: shifted.hour,
+    minute: shifted.minute,
+  };
 }
 
 function shiftWeekdayDraft(draft: ScheduleDraft, deltaMinutes: number): ScheduleDraft | null {
@@ -247,20 +313,29 @@ function shiftWeekdayDraft(draft: ScheduleDraft, deltaMinutes: number): Schedule
       return null;
     }
 
-    const shifted = shiftFixedTime(draft.hour, 0, deltaMinutes);
+    const shiftedHours = draft.hour.map((value) => shiftFixedTime(value, 0, deltaMinutes));
+    const dayShifts = new Set(shiftedHours.map((value) => value.dayShift));
+    if (dayShifts.size !== 1) {
+      return null;
+    }
+
     return {
       ...draft,
-      hour: shifted.hour,
-      dayOfWeek: wrapWeekday(draft.dayOfWeek + shifted.dayShift),
+      hour: shiftedHours.map((value) => value.hour),
+      dayOfWeek: draft.dayOfWeek.map((value) => wrapWeekday(value + shiftedHours[0].dayShift)),
     };
   }
 
-  const shifted = shiftFixedTime(draft.hour, draft.minute, deltaMinutes);
+  const shifted = shiftTimeSelections(draft.hour, draft.minute, deltaMinutes, { requireUniformDayShift: true });
+  if (!shifted) {
+    return null;
+  }
+
   return {
     ...draft,
     hour: shifted.hour,
     minute: shifted.minute,
-    dayOfWeek: wrapWeekday(draft.dayOfWeek + shifted.dayShift),
+    dayOfWeek: draft.dayOfWeek.map((value) => wrapWeekday(value + shifted.dayShift)),
   };
 }
 
@@ -274,8 +349,8 @@ function shiftDateDraft(draft: ScheduleDraft, deltaMinutes: number): ScheduleDra
       return deltaMinutes === 0 ? draft : null;
     }
 
-    const shiftedWithoutMonth = shiftFixedTime(draft.hour, draft.minute, deltaMinutes);
-    if (shiftedWithoutMonth.dayShift !== 0) {
+    const shiftedWithoutMonth = shiftTimeSelections(draft.hour, draft.minute, deltaMinutes, { requireUniformDayShift: true });
+    if (!shiftedWithoutMonth || shiftedWithoutMonth.dayShift !== 0) {
       return null;
     }
 
@@ -291,27 +366,112 @@ function shiftDateDraft(draft: ScheduleDraft, deltaMinutes: number): ScheduleDra
       return null;
     }
 
-    const shiftedHourOnly = shiftFixedTime(draft.hour, 0, deltaMinutes);
-    if (shiftedHourOnly.dayShift === 0) {
-      return { ...draft, hour: shiftedHourOnly.hour };
+    const shiftedHours = draft.hour.map((value) => shiftFixedTime(value, 0, deltaMinutes));
+    const dayShifts = new Set(shiftedHours.map((value) => value.dayShift));
+    if (dayShifts.size !== 1) {
+      return null;
     }
 
-    const shiftedDate = shiftDateWithReference(draft.month, draft.dayOfMonth, draft.hour, 0, deltaMinutes);
+    if (shiftedHours[0].dayShift === 0) {
+      return {
+        ...draft,
+        hour: shiftedHours.map((value) => value.hour),
+      };
+    }
+
+    const shiftedDate = shiftDateSelections(draft.month, draft.dayOfMonth, shiftedHours[0].dayShift);
+    if (!shiftedDate) {
+      return null;
+    }
+
     return {
       ...draft,
       month: shiftedDate.month,
       dayOfMonth: shiftedDate.dayOfMonth,
-      hour: shiftedDate.hour,
+      hour: shiftedHours.map((value) => value.hour),
     };
   }
 
-  const shifted = shiftDateWithReference(draft.month, draft.dayOfMonth, draft.hour, draft.minute, deltaMinutes);
+  const shiftedTime = shiftTimeSelections(draft.hour, draft.minute, deltaMinutes, { requireUniformDayShift: true });
+  if (!shiftedTime) {
+    return null;
+  }
+
+  const shifted = shiftDateSelections(draft.month, draft.dayOfMonth, shiftedTime.dayShift);
+  if (!shifted) {
+    return null;
+  }
+
   return {
     ...draft,
     month: shifted.month,
     dayOfMonth: shifted.dayOfMonth,
-    hour: shifted.hour,
-    minute: shifted.minute,
+    hour: shiftedTime.hour,
+    minute: shiftedTime.minute,
+  };
+}
+
+function shiftDateSelections(
+  months: number[],
+  dayOfMonth: number[],
+  dayShift: number,
+) {
+  const shiftedSelections = months.flatMap((month) =>
+    dayOfMonth.map((date) => shiftDateWithReference(month, date, 12, 0, dayShift * 1440)),
+  );
+  const monthValues = normalizeSelection(
+    shiftedSelections.map((selection) => selection.month),
+    1,
+    12,
+    { collapseFullSelection: true },
+  );
+  const dayValues = normalizeSelection(
+    shiftedSelections.map((selection) => selection.dayOfMonth),
+    1,
+    31,
+    { collapseFullSelection: false },
+  );
+  if (!dayValues) {
+    return null;
+  }
+
+  const uniquePairs = new Set(shiftedSelections.map((selection) => `${selection.month}:${selection.dayOfMonth}`));
+  const monthCount = monthValues === null ? 12 : monthValues.length;
+  if (uniquePairs.size !== monthCount * dayValues.length) {
+    return null;
+  }
+
+  return {
+    month: monthValues,
+    dayOfMonth: dayValues,
+  };
+}
+
+function shiftTimeSelections(
+  hours: number[],
+  minutes: number[],
+  deltaMinutes: number,
+  options?: { requireUniformDayShift?: boolean },
+) {
+  const shiftedSelections = hours.flatMap((hour) =>
+    minutes.map((minute) => shiftFixedTime(hour, minute, deltaMinutes)),
+  );
+  const dayShifts = new Set(shiftedSelections.map((selection) => selection.dayShift));
+  if (options?.requireUniformDayShift && dayShifts.size !== 1) {
+    return null;
+  }
+
+  const nextHours = Array.from(new Set(shiftedSelections.map((selection) => selection.hour))).sort((left, right) => left - right);
+  const nextMinutes = Array.from(new Set(shiftedSelections.map((selection) => selection.minute))).sort((left, right) => left - right);
+  const uniquePairs = new Set(shiftedSelections.map((selection) => `${selection.hour}:${selection.minute}`));
+  if (uniquePairs.size !== nextHours.length * nextMinutes.length) {
+    return null;
+  }
+
+  return {
+    hour: nextHours,
+    minute: nextMinutes,
+    dayShift: shiftedSelections[0]?.dayShift ?? 0,
   };
 }
 
